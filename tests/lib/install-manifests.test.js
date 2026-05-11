@@ -80,6 +80,7 @@ function runTests() {
   if (test('lists install profiles from the real project', () => {
     const profiles = listInstallProfiles();
     assert.ok(profiles.some(profile => profile.id === 'minimal'), 'Should include minimal profile');
+    assert.ok(profiles.some(profile => profile.id === 'codex-local-minimal'), 'Should include codex-local-minimal profile');
     assert.ok(profiles.some(profile => profile.id === 'core'), 'Should include core profile');
     assert.ok(profiles.some(profile => profile.id === 'full'), 'Should include full profile');
   })) passed++; else failed++;
@@ -226,6 +227,23 @@ function runTests() {
     );
     assert.ok(!plan.selectedModuleIds.includes('hooks-runtime'),
       'minimal profile should not install hooks-runtime');
+    assert.ok(plan.operations.length > 0, 'Should include install operations');
+  })) passed++; else failed++;
+
+  if (test('resolves codex-local-minimal profile without target skips for codex', () => {
+    const plan = resolveInstallPlan({
+      profileId: 'codex-local-minimal',
+      target: 'codex',
+      projectRoot: '/workspace/app',
+    });
+
+    assert.deepStrictEqual(
+      plan.selectedModuleIds,
+      ['agents-core', 'platform-configs', 'workflow-quality', 'security']
+    );
+    assert.deepStrictEqual(plan.skippedModuleIds, []);
+    assert.strictEqual(plan.targetAdapterId, 'codex-home');
+    assert.ok(plan.targetRoot.endsWith(path.join('.codex')), 'Codex plan should target the ~/.codex root');
     assert.ok(plan.operations.length > 0, 'Should include install operations');
   })) passed++; else failed++;
 

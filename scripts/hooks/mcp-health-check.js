@@ -37,6 +37,14 @@ const FAILURE_PATTERNS = [
   { code: 'transport', pattern: /ECONNREFUSED|ENOTFOUND|EAI_AGAIN|timed? out|socket hang up|connection (?:failed|lost|reset|closed)/i }
 ];
 
+function envFlag(name, defaultValue = false) {
+  const raw = process.env[name];
+  if (raw === undefined) {
+    return defaultValue;
+  }
+  return /^(1|true|yes|on)$/i.test(String(raw).trim());
+}
+
 function envNumber(name, fallback) {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value >= 0 ? value : fallback;
@@ -60,13 +68,18 @@ function configPaths() {
 
   const cwd = process.cwd();
   const home = os.homedir();
-
-  return [
-    path.join(cwd, '.claude.json'),
-    path.join(cwd, '.claude', 'settings.json'),
+  const paths = [
     path.join(home, '.claude.json'),
     path.join(home, '.claude', 'settings.json')
   ];
+
+  // Security default: do not trust repo-local MCP config unless explicitly allowed.
+  if (envFlag('ECC_MCP_ALLOW_PROJECT_CONFIG', false)) {
+    paths.unshift(path.join(cwd, '.claude', 'settings.json'));
+    paths.unshift(path.join(cwd, '.claude.json'));
+  }
+
+  return paths;
 }
 
 function readJsonFile(filePath) {
@@ -433,6 +446,10 @@ async function probeServer(serverName, resolvedConfig) {
 }
 
 function reconnectCommand(serverName) {
+  if (!envFlag('ECC_MCP_RECONNECT_ENABLE', false)) {
+    return null;
+  }
+
   const key = `ECC_MCP_RECONNECT_${String(serverName).toUpperCase().replace(/[^A-Z0-9]/g, '_')}`;
   const command = process.env[key] || process.env.ECC_MCP_RECONNECT_COMMAND || '';
   if (!command.trim()) {
@@ -444,14 +461,62 @@ function reconnectCommand(serverName) {
     : command;
 }
 
+function splitCommandLine(command) {
+  const tokens = [];
+  let current = '';
+  let quote = null;
+
+  for (let index = 0; index < command.length; index += 1) {
+    const ch = command[index];
+
+    if (quote) {
+      if (ch === quote) {
+        quote = null;
+      } else {
+        current += ch;
+      }
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+
+    if (/\s/.test(ch)) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = '';
+      }
+      continue;
+    }
+
+    current += ch;
+  }
+
+  if (quote) {
+    return null;
+  }
+  if (current.length > 0) {
+    tokens.push(current);
+  }
+
+  return tokens.length > 0 ? tokens : null;
+}
+
 function attemptReconnect(serverName) {
   const command = reconnectCommand(serverName);
   if (!command) {
-    return { attempted: false, success: false, reason: 'no reconnect command configured' };
+    return { attempted: false, success: false, reason: 'reconnect command disabled or not configured' };
   }
 
-  const result = spawnSync(command, {
-    shell: true,
+  const tokens = splitCommandLine(command);
+  if (!tokens) {
+    return { attempted: true, success: false, reason: 'invalid reconnect command syntax' };
+  }
+  const [binary, ...args] = tokens;
+
+  const result = spawnSync(binary, args, {
     env: process.env,
     cwd: process.cwd(),
     encoding: 'utf8',

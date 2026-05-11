@@ -236,7 +236,7 @@ jobs:
 
       - name: Run npm audit
         run: npm audit --audit-level=high
-        continue-on-error: true  # Allows PR to proceed, but marks job as failed if vulnerabilities found
+        continue-on-error: false
 
   lint:
     name: Lint

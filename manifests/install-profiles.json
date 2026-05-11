@@ -11,6 +11,15 @@
         "workflow-quality"
       ]
     },
+    "codex-local-minimal": {
+      "description": "Lean local Codex setup with Codex-compatible platform configs, agent surface, quality workflows, and security review support.",
+      "modules": [
+        "agents-core",
+        "platform-configs",
+        "workflow-quality",
+        "security"
+      ]
+    },
     "core": {
       "description": "Minimal harness baseline with commands, hooks, platform configs, and quality workflow support.",
       "modules": [

@@ -220,10 +220,10 @@ async function runTests() {
     assert.ok(/fail-open mode is enabled/i.test(result.stderr), `Expected fail-open log, got: ${result.stderr}`);
   })) passed++; else failed++;
 
-  if (await asyncTest('uses default cwd config path and default home state path', async () => {
+  if (await asyncTest('uses default home config path and default home state path', async () => {
     const tempDir = createTempDir();
     const homeDir = path.join(tempDir, 'home');
-    const configDir = path.join(tempDir, '.claude');
+    const configDir = path.join(homeDir, '.claude');
     const configPath = path.join(configDir, 'settings.json');
     const expectedStatePath = path.join(homeDir, '.claude', 'mcp-health-cache.json');
     const serverScript = path.join(tempDir, 'default-path-server.js');
@@ -260,8 +260,67 @@ async function runTests() {
       assert.strictEqual(
         fs.realpathSync(state.servers.cwddefault.source),
         fs.realpathSync(configPath),
-        'Expected cwd .claude/settings.json config source'
+        'Expected home .claude/settings.json config source'
       );
+    } finally {
+      cleanupTempDir(tempDir);
+    }
+  })) passed++; else failed++;
+
+  if (await asyncTest('ignores project-local config by default and allows it when explicitly enabled', async () => {
+    const tempDir = createTempDir();
+    const homeDir = path.join(tempDir, 'home');
+    const projectConfigDir = path.join(tempDir, '.claude');
+    const projectConfigPath = path.join(projectConfigDir, 'settings.json');
+    const statePath = path.join(homeDir, '.claude', 'mcp-health-cache.json');
+    const serverScript = path.join(tempDir, 'project-local-server.js');
+
+    try {
+      fs.mkdirSync(projectConfigDir, { recursive: true });
+      fs.mkdirSync(homeDir, { recursive: true });
+      fs.writeFileSync(serverScript, "setInterval(() => {}, 1000);\n");
+      writeConfig(projectConfigPath, {
+        mcpServers: {
+          localonly: createCommandConfig(serverScript)
+        }
+      });
+
+      const input = { tool_name: 'mcp__localonly__list', tool_input: {} };
+      const blockedByDefault = runHook(
+        input,
+        {
+          CLAUDE_HOOK_EVENT_NAME: 'PreToolUse',
+          ECC_MCP_CONFIG_PATH: null,
+          ECC_MCP_HEALTH_STATE_PATH: null,
+          ECC_MCP_HEALTH_TIMEOUT_MS: '100',
+          HOME: homeDir,
+          USERPROFILE: homeDir
+        },
+        { cwd: tempDir }
+      );
+      assert.strictEqual(blockedByDefault.code, 0, 'Expected missing config to remain non-blocking');
+      assert.ok(
+        blockedByDefault.stderr.includes('No MCP config found for localonly'),
+        `Expected missing-config log when project config is blocked, got: ${blockedByDefault.stderr}`
+      );
+      assert.strictEqual(fs.existsSync(statePath), false, 'Expected no state write when no config is resolved');
+
+      const allowed = runHook(
+        input,
+        {
+          CLAUDE_HOOK_EVENT_NAME: 'PreToolUse',
+          ECC_MCP_ALLOW_PROJECT_CONFIG: '1',
+          ECC_MCP_CONFIG_PATH: null,
+          ECC_MCP_HEALTH_STATE_PATH: null,
+          ECC_MCP_HEALTH_TIMEOUT_MS: '100',
+          HOME: homeDir,
+          USERPROFILE: homeDir
+        },
+        { cwd: tempDir }
+      );
+      assert.strictEqual(allowed.code, 0, `Expected project config opt-in to pass, got ${allowed.code}: ${allowed.stderr}`);
+      const state = readState(statePath);
+      assert.strictEqual(state.servers.localonly.status, 'healthy', 'Expected opt-in project server to be marked healthy');
     } finally {
       cleanupTempDir(tempDir);
     }
@@ -616,6 +675,7 @@ async function runTests() {
           CLAUDE_HOOK_EVENT_NAME: 'PreToolUse',
           ECC_MCP_CONFIG_PATH: configPath,
           ECC_MCP_HEALTH_STATE_PATH: statePath,
+          ECC_MCP_RECONNECT_ENABLE: '1',
           ECC_MCP_RECONNECT_COMMAND: `${JSON.stringify(process.execPath)} ${JSON.stringify(reconnectScript)}`,
           ECC_MCP_HEALTH_TIMEOUT_MS: '1000',
           ECC_MCP_HEALTH_BACKOFF_MS: '10'
@@ -679,6 +739,7 @@ async function runTests() {
           CLAUDE_HOOK_EVENT_NAME: 'PostToolUseFailure',
           ECC_MCP_CONFIG_PATH: configPath,
           ECC_MCP_HEALTH_STATE_PATH: statePath,
+          ECC_MCP_RECONNECT_ENABLE: '1',
           ECC_MCP_RECONNECT_COMMAND: `node ${JSON.stringify(reconnectScript)}`,
           ECC_MCP_HEALTH_TIMEOUT_MS: '1000'
         }
@@ -770,6 +831,7 @@ async function runTests() {
         {
           CLAUDE_HOOK_EVENT_NAME: 'PostToolUseFailure',
           ECC_MCP_HEALTH_STATE_PATH: statePath,
+          ECC_MCP_RECONNECT_ENABLE: '1',
           ECC_MCP_RECONNECT_COMMAND: `${JSON.stringify(process.execPath)} ${JSON.stringify(reconnectScript)}`
         }
       );
@@ -806,6 +868,7 @@ async function runTests() {
         {
           CLAUDE_HOOK_EVENT_NAME: 'PostToolUseFailure',
           ECC_MCP_HEALTH_STATE_PATH: statePath,
+          ECC_MCP_RECONNECT_ENABLE: '1',
           ECC_MCP_CONFIG_PATH: path.join(tempDir, 'missing.json'),
           ECC_MCP_RECONNECT_COMMAND: null,
           ECC_MCP_RECONNECT_FOO_BAR: `${JSON.stringify(process.execPath)} ${JSON.stringify(reconnectScript)} ${JSON.stringify(markerFile)} {server}`
