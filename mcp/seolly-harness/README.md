@@ -12,6 +12,12 @@ This is a dieted, MCP-ified slice of `everything-claude-code`, the Anthropic har
 
 엔트로픽에서 개최한 하네스엔지니어링 대회 우승 작품 `everything-claude-code`를 다이어트하고 MCP화한 버전입니다.
 
+추후 필요한 작업은
+
+1. 원하는 작업에 맞추어 하네스엔지니어링 자체를 다이어트하거나 기능을 목적과 의도에 따라 덧 붙이는 것
+
+2. 패키지화하여 npm 레지스트리에 등록하고 누구나 사용 가능하도록 편의성을 올리는 것 (지금처럼 로컬머신마다 경로를 하드코딩 하는 것을 지양해야함. 앞으로 개선할 것)
+
 ## Tools
 
 - `repo_surface_summary`
