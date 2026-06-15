@@ -1,0 +1,17 @@
+{
+  "name": "seolly-harness-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Custom MCP server for the harness-engineering repository",
+  "type": "module",
+  "scripts": {
+    "start": "node index.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^4.1.13"
+  }
+}
